@@ -9,7 +9,7 @@
 (ns ^{:doc "Wrapper functions and utils for running shell commands with im4java."
       :author "Kevin Neaton"}
   im4clj.im4java
-  (:use [im4clj config])
+  (:require [im4clj.config :as config])
   (:import [org.im4java.core ImageCommand Operation]
            [org.im4java.process ProcessStarter]))
 
@@ -24,35 +24,72 @@
      (ProcessStarter/setGlobalSearchPath path)
      path))
 
+;; coercian protocols
+(defprotocol ICommand
+  "An abstraction for building an ImageCommand."
+  (command [this] "Returns a function that returns an ImageCommand instance built from whatever this is."))
+
+(extend-protocol ICommand
+  String
+  (command [this] (ImageCommand. (into-array String [this])))
+  clojure.lang.Named
+  (command [this] (command (name this)))
+  ImageCommand
+  (command [this] this))
+
+(defprotocol IArgument
+  "Abstraction for building command-line arguments."
+  (stringify [this] "Returns a sequence of strings representing argument(s) this"))
+
+(extend-protocol IArgument
+  String
+  (stringify [this] (vector this))
+  
+  clojure.lang.Named
+  (stringify [this] (stringify (name this)))
+
+  nil
+  (stringify [this] [])
+  
+  clojure.lang.IPersistentCollection
+  (stringify [this] (vec (flatten (map stringify this))))
+  
+  Operation
+  (stringify [this] (stringify (vec (.getCmdArgs this))))
+
+  clojure.lang.IFn
+  (stringify [this] (stringify (.invoke this)))
+  
+  Object
+  (stringify [this] (stringify (str this))))
+
 ;; core fn's
-(defn command
-  "Create and return a new im4java ImageCommand from the string(s) provided."
-  {:tag ImageCommand}
-  [cmd & more]
-  {:pre [(string? cmd) (every? string? more)]}
-  (ImageCommand. (into-array String (cons cmd more))))
-
 (defn operation
-  "Create and return a new im4java Operation from the string(s) provided."
-  {:tag Operation}
-  [& opt-strs]
-  {:pre [(every? string? opt-strs)]}
-  (-> (Operation.) (.addRawArgs (into-array String opt-strs))))
+  ""
+  [& args]
+  (-> (Operation.)
+      (.addRawArgs (into-array String (stringify args)))))
 
-(defn- run*
-  "Run an ImageCommand command."
-  [^ImageCommand cmd ^Operation op & imgs]
-  (let [imgs (->> imgs (map str) object-array)]
-    (.run cmd op imgs)))
+(defn- adjust-for-gm
+  "Adjusts an ImageCommand to use GraphicsMagick based on the setting of use-gm?"
+  [cmd]
+  (let [cmd-strs (filter #(not (= "gm" %)) (.getCommand cmd))
+        cmd-strs (if (config/use-gm?) (cons "gm" cmd-strs) cmd-strs)]
+    ;;(doto cmd (.setCommand (into-array String cmd-strs)))
+    ;; we should be using the above, but there is a bug in im4java
+    ;; where .setCommand appends to the command instead of replacing
+    ;; it.
+    ;; For now, we create a new ImageCommand with the adjusted command
+    (ImageCommand. (into-array String cmd-strs))))
 
 (defn run
-  "Create and run an im4java ImageCommand from the string(s) provided.
+  "Create and run an im4java ImageCommand from the arg(s) provided.
 
    Example Usage:
 
    (run \"convert\" \"input.jpg\" \"resize\" \"100\" \"output.jpg\")"
-  [cmd & op]
-  {:pre [(string? cmd) (every? string? op)]}
-  (let [cmd  (command cmd)
-        op   (apply operation op)]
-    (run* cmd op)))
+  [cmd & args]
+  {:pre [(satisfies? ICommand cmd)]}
+  (let [cmd (adjust-for-gm (command cmd))
+        op  (operation args)]
+    (.run cmd op (into-array String []))))

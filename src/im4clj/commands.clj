@@ -9,19 +9,8 @@
 (ns ^{:doc "Command fn's"
       :author "Kevin Neaton"}
   im4clj.commands
-  (:use [im4clj config run]))
-
-(defn command
-  "Build a new command. Prepends \"gm\" to the command if (use-gm?) is true.
-
-   Example Usage:
-
-   (command :convert)
-   (command 'convert)
-   (command \"convert\")
-  "
-  [cmd]
-  (if (use-gm?) (list "gm" cmd) cmd))
+  (:refer-clojure :exclude [compare import])
+  (:use [im4clj.im4java :only [run]]))
 
 (def ^:private command-specs
   {'animate
