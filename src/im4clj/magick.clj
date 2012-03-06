@@ -9,16 +9,25 @@
 (ns ^{:doc "ImageMagick for Clojure. im4clj.magick defines a single public... magick. Use magick to access all of im4clj's goodness without polluting our current namespace."
       :author "Kevin Neaton"}
   im4clj.magick
-  (:require [im4clj
-             [commands :as cmd]
-             [options :as opt]]))
+  (:require [im4clj commands options]))
+
+(defn minus-option-aliases
+  [env]
+  (reduce (fn [keep [k v]]
+            (let [[minus? & newk] (name k)]
+              (if (= \- minus?)
+                (cons keep [(symbol (apply str newk)) v]))))
+          []
+          env))
 
 (def ^:private magick-bindings
-  (flatten (concat (ns-publics 'im4clj.commands)
-                   (ns-publics 'im4clj.options))))
+  (let [commands (ns-publics 'im4clj.commands)
+        options (ns-publics 'im4clj.options)
+        aliases (minus-option-aliases options)]
+    (flatten (concat commands options aliases))))
 
 (defmacro magick
-  "Access to all of im4clj's goodness without polluting our current namespace.
+  "Access to all of im4clj's goodness without polluting your current namespace.
 
    Example Usage:
 
